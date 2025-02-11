@@ -1,12 +1,14 @@
 import express from 'express';
 import fs from 'fs';
 import { PdfReader } from 'pdfreader';
+import ExcelJS from 'exceljs'; // Import ExcelJS
 
 const app = express();
 const port = 3000;
 
 app.use(express.json());
 
+// Function to extract text from the first page of the PDF
 function extractPdfData(filePath, callback) {
   const data = [];
   let currentPage = 0;
@@ -40,6 +42,30 @@ function extractPdfData(filePath, callback) {
   });
 }
 
+// Function to generate an Excel file with the extracted data (Policy Number and Issued Date)
+async function generateExcel(policyNumber, issuedDate) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('PDF Data');
+
+  // Add header row
+  worksheet.columns = [
+    { header: 'Policy Number', key: 'policyNumber', width: 30 },
+    { header: 'Issued Date', key: 'issuedDate', width: 20 },
+  ];
+
+  // Add the data row (only Policy Number and Issued Date)
+  worksheet.addRow({
+    policyNumber: policyNumber,
+    issuedDate: issuedDate,
+  });
+
+  // Write to a file
+  const filePath = './extracted_data.xlsx';
+  await workbook.xlsx.writeFile(filePath);
+  console.log(`Excel file has been written to ${filePath}`);
+}
+
+// POST endpoint to process the PDF
 app.post('/process-pdf', (req, res) => {
   const filePath = './PC-271000312419057199.pdf';
 
@@ -47,20 +73,15 @@ app.post('/process-pdf', (req, res) => {
     return res.status(400).json({ error: 'File does not exist' });
   }
 
-  extractPdfData(filePath, (err, data) => {
+  extractPdfData(filePath, async (err, data) => {
     if (err) {
       return res.status(500).json({ error: 'Error processing PDF' });
     }
 
-    // console.log('Extracted Text from PDF:');
-    
+    // Combine the text and clean up any extra spaces or line breaks
     const paragraph = data.join(' ').replace(/\s+/g, ' ').trim();
 
-    // console.log('Paragraph:', paragraph);
-
-    const policyNumberKeyword = 'Policy Number';
-    const issuedDateKeyword = 'Issued Date';
-
+    // Extract policy number and issued date using regex
     let policyNumber = null;
     let issuedDate = null;
 
@@ -74,19 +95,19 @@ app.post('/process-pdf', (req, res) => {
       issuedDate = issuedDateMatch[0];
     }
 
-    // console.log('Policy Number:', policyNumber);
-    // console.log('Issued Date:', issuedDate);
+    // Generate the Excel file with only the extracted data
+    await generateExcel(policyNumber, issuedDate);
 
+    // Send the extracted data in the response
     res.json({
       policyNumber,
       issuedDate,
-      paragraph,  
+      paragraph,
     });
   });
 });
 
-
-
+// Server listening on port 3000
 app.listen(port, async () => {
   console.log(`Server running at http://localhost:${port}`);
 

@@ -5,10 +5,11 @@ import { PdfReader } from 'pdfreader';
 const app = express();
 const port = 3000;
 
-app.use(express.json()); 
- 
+app.use(express.json());
+
 function extractPdfData(filePath, callback) {
   const data = [];
+  let currentPage = 0;
 
   new PdfReader().parseFileItems(filePath, (err, item) => {
     if (err) {
@@ -20,6 +21,16 @@ function extractPdfData(filePath, callback) {
     if (!item) {
       console.warn('End of file reached');
       callback(null, data);
+      return;
+    }
+
+    // Check for page change (PDFReader provides page number on page start)
+    if (item.page) {
+      currentPage = item.page;
+    }
+
+    // Stop after the first page
+    if (currentPage > 1) {
       return;
     }
 
@@ -41,10 +52,11 @@ app.post('/process-pdf', (req, res) => {
       return res.status(500).json({ error: 'Error processing PDF' });
     }
 
-    console.log('Extracted Text from PDF:');
-    data.forEach((line, index) => {
-      console.log(`Line ${index + 1}:`, line);
-    });
+    // console.log('Extracted Text from PDF:');
+    
+    const paragraph = data.join(' ').replace(/\s+/g, ' ').trim();
+
+    // console.log('Paragraph:', paragraph);
 
     const policyNumberKeyword = 'Policy Number';
     const issuedDateKeyword = 'Issued Date';
@@ -52,31 +64,28 @@ app.post('/process-pdf', (req, res) => {
     let policyNumber = null;
     let issuedDate = null;
 
-    data.forEach((line) => {
-      if (line.toLowerCase().includes(policyNumberKeyword.toLowerCase())) {
-        const policyNumberMatch = line.match(/(\d{1,10}[A-Za-z]{0,5}[-\s]?\d{0,5})/); 
-        if (policyNumberMatch) {
-          policyNumber = policyNumberMatch[0];
-        }
-      }
+    const policyNumberMatch = paragraph.match(/Policy Number[:\s]*\d{15,}/);
+    if (policyNumberMatch) {
+      policyNumber = policyNumberMatch[0].split(':')[1].trim();
+    }
 
-      if (line.toLowerCase().includes(issuedDateKeyword.toLowerCase())) {
-        const issuedDateMatch = line.match(/(\d{1,2}\/\d{1,2}\/\d{4})/); 
-        if (issuedDateMatch) {
-          issuedDate = issuedDateMatch[0];
-        }
-      }
-    });
+    const issuedDateMatch = paragraph.match(/\d{1,2}\/\d{1,2}\/\d{4}/);
+    if (issuedDateMatch) {
+      issuedDate = issuedDateMatch[0];
+    }
 
-    console.log('Policy Number:', policyNumber);
-    console.log('Issued Date:', issuedDate);
+    // console.log('Policy Number:', policyNumber);
+    // console.log('Issued Date:', issuedDate);
 
     res.json({
       policyNumber,
-      issuedDate
+      issuedDate,
+      paragraph,  
     });
   });
 });
+
+
 
 app.listen(port, async () => {
   console.log(`Server running at http://localhost:${port}`);
@@ -93,9 +102,9 @@ app.listen(port, async () => {
 
   if (response.ok) {
     const result = await response.json();
-    console.log('Simulated Response:', result); 
+    console.log('Simulated Response:', result);
   } else {
     const errorResult = await response.json();
-    console.error('Simulated Error Response:', errorResult); 
+    console.error('Simulated Error Response:', errorResult);
   }
 });
